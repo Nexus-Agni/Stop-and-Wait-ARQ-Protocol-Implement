@@ -209,9 +209,4 @@ After running these simulations, you will understand:
 - RFC 1122 - Requirements for Internet Hosts
 - TCP/IP Illustrated by W. Richard Stevens
 
----
 
-**Author**: Computer Networks Assignment  
-**Course**: CN Continuous Assessment 4  
-**Language**: Python 3.x  
-**Tools**: VS Code, Python Standard Library
