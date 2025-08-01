@@ -1,0 +1,42 @@
+# Requirements for ARQ Protocols Simulation
+
+## Core Requirements (Built-in Python modules)
+- time
+- random  
+- threading
+- dataclasses
+- typing
+- enum
+- collections
+- json
+
+## Optional Requirements (for advanced analysis and visualization)
+matplotlib>=3.5.0
+numpy>=1.21.0
+
+## Installation Instructions
+
+### Basic Simulation (No additional packages needed)
+The core ARQ protocol simulations work with Python standard library only.
+
+### Advanced Analysis with Visualizations
+```bash
+pip install matplotlib numpy
+```
+
+### Running the Simulations
+```bash
+# Individual protocol simulations
+python stop_and_wait.py
+python go_back_n.py  
+python selective_repeat.py
+
+# Main demonstration with menu
+python arq_protocols_demo.py
+
+# Advanced analysis (requires matplotlib/numpy)
+python arq_analysis.py
+```
+
+### Python Version
+Python 3.7 or higher recommended
