@@ -53,6 +53,8 @@ class SelectiveRepeatSender:
         self.total_transmissions = 0
         self.retransmissions = 0
         self.individual_timers = {}  # Individual timers for each frame
+        self.max_retransmissions = 5  # Maximum retransmissions per frame
+        self.retransmit_count = {}  # Track retransmission count per frame
         
     def add_data(self, data_list: List[str]):
         """Add data to the buffer for transmission"""
@@ -68,7 +70,12 @@ class SelectiveRepeatSender:
         """Send frames using Selective Repeat protocol"""
         print(f"\n📤 Sender: Starting transmission with window size {self.window_size}")
         
-        while self.data_buffer or self.window:
+        max_iterations = 1000  # Prevent infinite loops
+        iteration_count = 0
+        
+        while (self.data_buffer or self.window) and iteration_count < max_iterations:
+            iteration_count += 1
+            
             # Send new frames if window allows
             while self.can_send():
                 data = self.data_buffer.popleft()
@@ -98,8 +105,9 @@ class SelectiveRepeatSender:
                 self.next_seq_num += 1
                 time.sleep(0.1)  # Small delay between transmissions
             
-            # Check for individual frame timeouts
-            self.check_individual_timeouts(receiver)
+            # Check for individual frame timeouts (less frequently)
+            if iteration_count % 5 == 0:  # Check timeouts every 5 iterations
+                self.check_individual_timeouts(receiver)
             
             # Try to slide the window
             self.slide_window()
@@ -108,7 +116,10 @@ class SelectiveRepeatSender:
             if not self.window and not self.data_buffer:
                 break
                 
-            time.sleep(0.1)
+            time.sleep(0.05)  # Reduced sleep time
+        
+        if iteration_count >= max_iterations:
+            print(f"⚠️ Sender: Maximum iterations reached, terminating")
         
         print(f"✅ Sender: All frames transmitted successfully")
         return True
@@ -129,6 +140,8 @@ class SelectiveRepeatSender:
                 del self.window[seq_num]
             if seq_num in self.individual_timers:
                 del self.individual_timers[seq_num]
+            if seq_num in self.retransmit_count:
+                del self.retransmit_count[seq_num]
     
     def slide_window(self):
         """Slide the window forward if possible"""
@@ -151,9 +164,9 @@ class SelectiveRepeatSender:
             if current_time - timestamp > self.timeout:
                 frames_to_retransmit.append(seq_num)
         
-        # Retransmit timed-out frames
+        # Retransmit timed-out frames (only if they're still in the window)
         for seq_num in frames_to_retransmit:
-            if seq_num in self.window:
+            if seq_num in self.window and seq_num < self.base + self.window_size:
                 self.selective_retransmit(receiver, seq_num)
     
     def selective_retransmit(self, receiver, seq_num: int):
@@ -161,12 +174,40 @@ class SelectiveRepeatSender:
         if seq_num not in self.window:  # Check if frame still exists
             return
             
+        # Don't retransmit if frame is outside current window
+        if seq_num < self.base or seq_num >= self.base + self.window_size:
+            print(f"🚫 Sender: Frame {seq_num % self.max_seq_num} outside window, stopping retransmission")
+            # Remove from window and timers
+            if seq_num in self.window:
+                del self.window[seq_num]
+            if seq_num in self.individual_timers:
+                del self.individual_timers[seq_num]
+            if seq_num in self.retransmit_count:
+                del self.retransmit_count[seq_num]
+            return
+        
+        # Check retransmission limit
+        if seq_num not in self.retransmit_count:
+            self.retransmit_count[seq_num] = 0
+        
+        if self.retransmit_count[seq_num] >= self.max_retransmissions:
+            print(f"🚫 Sender: Frame {seq_num % self.max_seq_num} exceeded max retransmissions, giving up")
+            # Remove from window and timers
+            if seq_num in self.window:
+                del self.window[seq_num]
+            if seq_num in self.individual_timers:
+                del self.individual_timers[seq_num]
+            if seq_num in self.retransmit_count:
+                del self.retransmit_count[seq_num]
+            return
+            
         frame_info = self.window[seq_num]
         frame = frame_info['frame']
         
-        print(f"🔄 Sender: Selective retransmission of frame {frame.seq_num} with data '{frame.data}'")
+        print(f"🔄 Sender: Selective retransmission of frame {frame.seq_num} with data '{frame.data}' (attempt {self.retransmit_count[seq_num] + 1})")
         self.total_transmissions += 1
         self.retransmissions += 1
+        self.retransmit_count[seq_num] += 1
         
         # Update timestamp and timer
         self.window[seq_num]['timestamp'] = time.time()
@@ -255,7 +296,12 @@ class SelectiveRepeatReceiver:
     
     def is_already_delivered(self, seq_num: int) -> bool:
         """Check if frame was already delivered"""
-        return seq_num < self.base % self.max_seq_num
+        # Handle wrap-around case properly
+        if self.base > seq_num:
+            # Check if seq_num is in the "old" part of the sequence space
+            return seq_num < (self.base % self.max_seq_num)
+        else:
+            return seq_num < self.base
     
     def deliver_frames(self) -> List[int]:
         """Deliver frames in order and slide window"""

@@ -52,6 +52,8 @@ class GoBackNSender:
         self.total_transmissions = 0
         self.retransmissions = 0
         self.timer_active = False
+        self.max_retransmissions = 10  # Maximum total retransmissions
+        self.total_retransmission_count = 0  # Track total retransmissions
         
     def add_data(self, data_list: List[str]):
         """Add data to the buffer for transmission"""
@@ -67,7 +69,12 @@ class GoBackNSender:
         """Send frames using Go-Back-N protocol"""
         print(f"\n📤 Sender: Starting transmission with window size {self.window_size}")
         
-        while self.data_buffer or self.window:
+        max_iterations = 500  # Prevent infinite loops
+        iteration_count = 0
+        
+        while (self.data_buffer or self.window) and iteration_count < max_iterations:
+            iteration_count += 1
+            
             # Send new frames if window allows
             while self.can_send():
                 data = self.data_buffer.popleft()
@@ -93,14 +100,20 @@ class GoBackNSender:
                 self.next_seq_num += 1
                 time.sleep(0.1)  # Small delay between transmissions
             
-            # Check for timeouts
-            self.check_timeouts(receiver)
+            # Check for timeouts (less frequently)
+            if iteration_count % 3 == 0:  # Check every 3 iterations
+                self.check_timeouts(receiver)
             
             # If no frames in window and no data to send, we're done
             if not self.window and not self.data_buffer:
                 break
                 
-            time.sleep(0.1)
+            time.sleep(0.05)  # Reduced sleep time
+        
+        if iteration_count >= max_iterations:
+            print(f"⚠️ Sender: Maximum iterations reached, terminating")
+        elif self.total_retransmission_count >= self.max_retransmissions:
+            print(f"⚠️ Sender: Maximum retransmissions reached, terminating")
         
         print(f"✅ Sender: All frames transmitted successfully")
         return True
@@ -146,11 +159,19 @@ class GoBackNSender:
         """Retransmit from failed frame onwards (Go-Back-N behavior)"""
         print(f"🔄 Sender: Go-Back-N retransmission starting from frame {failed_seq_num % self.max_seq_num}")
         
+        # Check if we've exceeded retransmission limit
+        if self.total_retransmission_count >= self.max_retransmissions:
+            print(f"🚫 Sender: Maximum retransmissions ({self.max_retransmissions}) reached, stopping")
+            return
+        
         # Get all frames to retransmit (from failed frame onwards)
         frames_to_retransmit = []
         for seq_num in sorted(self.window.keys()):
             if seq_num >= failed_seq_num:
                 frames_to_retransmit.append(seq_num)
+        
+        # Limit the number of frames to retransmit to prevent excessive load
+        frames_to_retransmit = frames_to_retransmit[:self.window_size]
         
         # Retransmit frames
         for seq_num in frames_to_retransmit:
@@ -163,6 +184,12 @@ class GoBackNSender:
             print(f"📡 Sender: Retransmitting frame {frame.seq_num} with data '{frame.data}'")
             self.total_transmissions += 1
             self.retransmissions += 1
+            self.total_retransmission_count += 1
+            
+            # Check retransmission limit during the loop
+            if self.total_retransmission_count >= self.max_retransmissions:
+                print(f"🚫 Sender: Retransmission limit reached during Go-Back-N")
+                break
             
             # Update timestamp
             self.window[seq_num]['timestamp'] = time.time()

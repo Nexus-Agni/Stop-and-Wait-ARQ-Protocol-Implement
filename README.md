@@ -92,6 +92,12 @@ python arq_protocols_demo.py
 - Individual frame timers
 - Complex buffer management
 - Selective retransmission
+- **Fixed Issues (v2):**
+  - Prevented infinite retransmission loops
+  - Added window boundary checks
+  - Maximum retransmission limits per frame
+  - Improved timeout management
+  - Better cleanup of acknowledged frames
 
 ## 🧪 Simulation Features
 
